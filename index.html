@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Cinema Relay</title>
+<style>
+    html, body { height: 100%; margin: 0; padding: 0; background: #000; overflow: hidden; }
+    #idle {
+        position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+        color: #fff; font-family: Arial, sans-serif; font-size: 8vw; font-weight: bold;
+        background: linear-gradient(135deg, #1e3c72, #2a5298); z-index: 5;
+    }
+    iframe { width: 100%; height: 100%; border: 0; display: block; }
+</style>
+</head>
+<body>
+    <div id="idle">🎬 CINEMA</div>
+    <div id="holder"></div>
+
+<script>
+    let curVolume = 50, curMuted = false;
+    function showIdle(s){ document.getElementById('idle').style.display = s ? 'flex' : 'none'; }
+    function build(videoId){
+        const h = document.getElementById('holder');
+        h.innerHTML = '';
+        if(!videoId){ showIdle(true); return; }
+        showIdle(false);
+        const params = [
+            'autoplay=1','mute=0','controls=0','rel=0','modestbranding=1',
+            'iv_load_policy=3','disablekb=1','fs=0','playsinline=1',
+            'enablejsapi=1','loop=1','playlist=' + videoId,
+            'origin=' + location.origin
+        ].join('&');
+        const f = document.createElement('iframe');
+        f.id = 'yt';
+        f.allow = 'autoplay; encrypted-media';
+        f.setAttribute('referrerpolicy','strict-origin-when-cross-origin');
+        f.src = 'https://www.youtube-nocookie.com/embed/' + videoId + '?' + params;
+        h.appendChild(f);
+    }
+    function cmd(func, args){
+        const f = document.getElementById('yt');
+        if(!f || !f.contentWindow) return;
+        f.contentWindow.postMessage(JSON.stringify({event:'command', func:func, args:args||[]}), '*');
+    }
+    function applyVol(){ cmd('setVolume',[curVolume]); curMuted ? cmd('mute') : cmd('unMute'); }
+    window.addEventListener('message', function(ev){
+        let d = ev.data;
+        if(typeof d === 'string'){ try{ d = JSON.parse(d); }catch(e){ return; } }
+        if(!d || !d.action) return;
+        switch(d.action){
+            case 'load':
+                curVolume = (typeof d.volume==='number') ? d.volume : curVolume;
+                curMuted = !!d.muted;
+                build(d.videoId);
+                setTimeout(()=>{ applyVol(); cmd('playVideo'); }, 1500);
+                break;
+            case 'stop':   build(null); break;
+            case 'pause':  cmd('pauseVideo'); break;
+            case 'resume': cmd('playVideo'); break;
+            case 'volume': curVolume = d.volume; applyVol(); break;
+            case 'mute':   curMuted = true; cmd('mute'); break;
+            case 'unmute': curMuted = false; cmd('unMute'); cmd('setVolume',[curVolume]); break;
+        }
+    });
+    const v = new URLSearchParams(location.search).get('v');
+    if(v) build(v);
+</script>
+</body>
+</html>
