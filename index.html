@@ -5,15 +5,16 @@
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Cinema Relay</title>
 <style>
-    html, body { height: 100%; width: 100%; margin: 0; padding: 0; background: #000; overflow: hidden; }
-    #holder { position: absolute; inset: 0; width: 100%; height: 100%; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; width: 100%; background: #000; overflow: hidden; }
+    #holder { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; }
     #holder iframe {
-        position: absolute; top: 0; left: 0;
-        width: 100% !important; height: 100% !important;
-        border: 0; display: block;
+        position: fixed; top: 0; left: 0;
+        width: 100vw !important; height: 100vh !important;
+        border: 0 !important; display: block;
     }
     #idle {
-        position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+        position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
         color: #fff; font-family: Arial, sans-serif; font-size: 8vw; font-weight: bold;
         background: linear-gradient(135deg, #1e3c72, #2a5298); z-index: 5;
     }
@@ -25,9 +26,7 @@
 
 <script>
     let curVolume = 50, curMuted = false;
-
     function showIdle(s){ document.getElementById('idle').style.display = s ? 'flex' : 'none'; }
-
     function build(videoId){
         const h = document.getElementById('holder');
         h.innerHTML = '';
@@ -36,40 +35,47 @@
         const params = [
             'autoplay=1','mute=0','controls=0','rel=0','modestbranding=1',
             'iv_load_policy=3','disablekb=1','fs=0','playsinline=1',
-            'enablejsapi=1','loop=1','playlist=' + videoId,
-            'origin=' + location.origin
+            'enablejsapi=1','origin=' + location.origin
         ].join('&');
         const f = document.createElement('iframe');
         f.id = 'yt';
-        f.width = '100%';
-        f.height = '100%';
+        f.setAttribute('width', '100%');
+        f.setAttribute('height', '100%');
         f.allow = 'autoplay; encrypted-media';
         f.setAttribute('frameborder','0');
         f.setAttribute('referrerpolicy','strict-origin-when-cross-origin');
         f.src = 'https://www.youtube-nocookie.com/embed/' + videoId + '?' + params;
         h.appendChild(f);
     }
-
     function cmd(func, args){
         const f = document.getElementById('yt');
         if(!f || !f.contentWindow) return;
         f.contentWindow.postMessage(JSON.stringify({event:'command', func:func, args:args||[]}), '*');
     }
-
     function applyVol(){ cmd('setVolume',[curVolume]); curMuted ? cmd('mute') : cmd('unMute'); }
-
+    let curVideo = null;
     window.addEventListener('message', function(ev){
         let d = ev.data;
         if(typeof d === 'string'){ try{ d = JSON.parse(d); }catch(e){ return; } }
-        if(!d || !d.action) return;
+        if(!d) return;
+        if(d.event === 'onStateChange' && d.info === 0 && curVideo){
+            cmd('seekTo', [0, true]); cmd('playVideo');
+            return;
+        }
+        if(!d.action) return;
         switch(d.action){
             case 'load':
+                curVideo = d.videoId;
                 curVolume = (typeof d.volume==='number') ? d.volume : curVolume;
                 curMuted = !!d.muted;
                 build(d.videoId);
-                setTimeout(()=>{ applyVol(); cmd('playVideo'); }, 1500);
+                setTimeout(()=>{
+                    applyVol(); cmd('playVideo');
+                    const f = document.getElementById('yt');
+                    if(f && f.contentWindow){ f.contentWindow.postMessage(JSON.stringify({event:'listening'}), '*'); }
+                }, 1500);
                 break;
-            case 'stop':   build(null); break;
+            case 'stop':   curVideo = null; build(null); break;
             case 'pause':  cmd('pauseVideo'); break;
             case 'resume': cmd('playVideo'); break;
             case 'volume': curVolume = d.volume; applyVol(); break;
@@ -77,9 +83,8 @@
             case 'unmute': curMuted = false; cmd('unMute'); cmd('setVolume',[curVolume]); break;
         }
     });
-
     const v = new URLSearchParams(location.search).get('v');
     if(v) build(v);
 </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a073376ceea7472a',t:'MTc4MDcwNDg2Mg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</body>
 </html>
