@@ -26,28 +26,12 @@
 
 <script>
     let curVolume = 50, curMuted = false;
-
     function showIdle(s){ document.getElementById('idle').style.display = s ? 'flex' : 'none'; }
-
     function build(videoId){
         const h = document.getElementById('holder');
         h.innerHTML = '';
         if(!videoId){ showIdle(true); return; }
         showIdle(false);
-        // معاملات نظيفة بدون loop/playlist (هي اللي تسبب مشغّل مصغّر بازرار)
-        const params = [
-            'autoplay=1',
-            'mute=0',
-            'controls=0',
-            'rel=0',
-            'modestbranding=1',
-            'iv_load_policy=3',
-            'disablekb=1',
-            'fs=0',
-            'playsinline=1',
-            'enablejsapi=1',
-            'origin=' + location.origin
-        ].join('&');
         const f = document.createElement('iframe');
         f.id = 'yt';
         f.setAttribute('width', '100%');
@@ -55,37 +39,24 @@
         f.allow = 'autoplay; encrypted-media';
         f.setAttribute('frameborder','0');
         f.setAttribute('referrerpolicy','strict-origin-when-cross-origin');
-        f.src = 'https://www.youtube-nocookie.com/embed/' + videoId + '?' + params;
+        // yout-ube.com (بشرطة) = بدون اعلانات
+        f.src = 'https://www.yout-ube.com/watch?v=' + videoId + '&autoplay=1';
         h.appendChild(f);
     }
-
     function cmd(func, args){
         const f = document.getElementById('yt');
         if(!f || !f.contentWindow) return;
         f.contentWindow.postMessage(JSON.stringify({event:'command', func:func, args:args||[]}), '*');
     }
-
     function applyVol(){ cmd('setVolume',[curVolume]); curMuted ? cmd('mute') : cmd('unMute'); }
-
     let curVideo = null;
-    let curTime = 0;   // الوقت الحالي للفيديو (نتتبعه من احداث يوتيوب)
-
+    let curTime = 0;
     window.addEventListener('message', function(ev){
         let d = ev.data;
         if(typeof d === 'string'){ try{ d = JSON.parse(d); }catch(e){ return; } }
         if(!d) return;
-
-        // تتبّع الوقت الحالي من احداث يوتيوب
-        if(d.event === 'infoDelivery' && d.info && typeof d.info.currentTime === 'number'){
-            curTime = d.info.currentTime;
-        }
-        // اعادة التشغيل عند الانتهاء (0 = ended)
-        if(d.event === 'onStateChange' && d.info === 0 && curVideo){
-            curTime = 0;
-            cmd('seekTo', [0, true]); cmd('playVideo');
-            return;
-        }
-
+        if(d.event === 'infoDelivery' && d.info && typeof d.info.currentTime === 'number'){ curTime = d.info.currentTime; }
+        if(d.event === 'onStateChange' && d.info === 0 && curVideo){ curTime = 0; cmd('seekTo', [0, true]); cmd('playVideo'); return; }
         if(!d.action) return;
         switch(d.action){
             case 'load':
@@ -93,29 +64,20 @@
                 curVolume = (typeof d.volume==='number') ? d.volume : curVolume;
                 curMuted = !!d.muted;
                 build(d.videoId);
-                setTimeout(()=>{
-                    applyVol(); cmd('playVideo');
+                setTimeout(()=>{ applyVol(); cmd('playVideo');
                     const f = document.getElementById('yt');
-                    if(f && f.contentWindow){
-                        f.contentWindow.postMessage(JSON.stringify({event:'listening'}), '*');
-                    }
+                    if(f && f.contentWindow){ f.contentWindow.postMessage(JSON.stringify({event:'listening'}), '*'); }
                 }, 1500);
                 break;
             case 'stop':   curVideo = null; curTime = 0; build(null); break;
             case 'pause':  cmd('pauseVideo'); break;
             case 'resume': cmd('playVideo'); break;
-            case 'seek':
-                // تقديم/ترجيع نسبي بالثواني (موجب=تقديم ، سالب=ترجيع)
-                curTime = Math.max(0, curTime + (d.seconds || 0));
-                cmd('seekTo', [curTime, true]);
-                cmd('playVideo');
-                break;
+            case 'seek':   curTime = Math.max(0, curTime + (d.seconds || 0)); cmd('seekTo', [curTime, true]); cmd('playVideo'); break;
             case 'volume': curVolume = d.volume; applyVol(); break;
             case 'mute':   curMuted = true; cmd('mute'); break;
             case 'unmute': curMuted = false; cmd('unMute'); cmd('setVolume',[curVolume]); break;
         }
     });
-
     const v = new URLSearchParams(location.search).get('v');
     if(v) build(v);
 </script>
