@@ -26,7 +26,7 @@
 
 <script>
     let curVolume = 50, curMuted = false;
-    let curVideo = null, curTime = 0;
+    let curVideo = null, curTime = 0, curDuration = 0;
 
     function showIdle(s){ document.getElementById('idle').style.display = s ? 'flex' : 'none'; }
 
@@ -35,45 +35,76 @@
         h.innerHTML = '';
         if(!videoId){ showIdle(true); return; }
         showIdle(false);
+        // nocookie + enablejsapi : يدعم التحكم (تقديم/ترجيع/صوت)
+        const params = [
+            'autoplay=1','mute=0','controls=0','rel=0','modestbranding=1',
+            'iv_load_policy=3','disablekb=1','fs=0','playsinline=1',
+            'enablejsapi=1','origin=' + location.origin
+        ].join('&');
         const f = document.createElement('iframe');
         f.id = 'yt';
-        f.setAttribute('width', '100%');
-        f.setAttribute('height', '100%');
+        f.setAttribute('width','100%'); f.setAttribute('height','100%');
         f.allow = 'autoplay; encrypted-media';
         f.setAttribute('frameborder','0');
         f.setAttribute('referrerpolicy','strict-origin-when-cross-origin');
-        // yout-ube.com (بشرطة) - بدون اعلانات
-        f.src = 'https://www.yout-ube.com/watch?v=' + videoId;
+        f.src = 'https://www.youtube-nocookie.com/embed/' + videoId + '?' + params;
         h.appendChild(f);
     }
 
     function cmd(func, args){
         const f = document.getElementById('yt');
         if(!f || !f.contentWindow) return;
-        try { f.contentWindow.postMessage(JSON.stringify({event:'command', func:func, args:args||[]}), '*'); } catch(e){}
+        f.contentWindow.postMessage(JSON.stringify({event:'command', func:func, args:args||[]}), '*');
     }
-
     function applyVol(){ cmd('setVolume',[curVolume]); curMuted ? cmd('mute') : cmd('unMute'); }
+
+    // ارسال حالة الوقت للنافذة الأصل (player.html) كل ثانية
+    function reportTime(){
+        if(window.parent){
+            window.parent.postMessage(JSON.stringify({
+                cinemaTime: true, time: curTime, duration: curDuration, playing: curVideo!=null
+            }), '*');
+        }
+    }
+    setInterval(reportTime, 1000);
 
     window.addEventListener('message', function(ev){
         let d = ev.data;
         if(typeof d === 'string'){ try{ d = JSON.parse(d); }catch(e){ return; } }
         if(!d) return;
-        if(d.event === 'infoDelivery' && d.info && typeof d.info.currentTime === 'number'){ curTime = d.info.currentTime; }
+
+        // احداث يوتيوب
+        if(d.event === 'infoDelivery' && d.info){
+            if(typeof d.info.currentTime === 'number') curTime = d.info.currentTime;
+            if(typeof d.info.duration === 'number' && d.info.duration > 0) curDuration = d.info.duration;
+        }
         if(d.event === 'onStateChange' && d.info === 0 && curVideo){ curTime = 0; cmd('seekTo', [0, true]); cmd('playVideo'); return; }
+
         if(!d.action) return;
         switch(d.action){
             case 'load':
-                curVideo = d.videoId; curTime = 0;
+                curVideo = d.videoId; curTime = 0; curDuration = 0;
                 curVolume = (typeof d.volume==='number') ? d.volume : curVolume;
                 curMuted = !!d.muted;
                 build(d.videoId);
-                setTimeout(()=>{ applyVol(); cmd('playVideo'); }, 2000);
+                setTimeout(()=>{
+                    applyVol(); cmd('playVideo');
+                    const f = document.getElementById('yt');
+                    if(f && f.contentWindow){ f.contentWindow.postMessage(JSON.stringify({event:'listening'}), '*'); }
+                }, 1500);
                 break;
-            case 'stop':   curVideo = null; curTime = 0; build(null); break;
+            case 'stop':   curVideo = null; curTime = 0; curDuration = 0; build(null); break;
             case 'pause':  cmd('pauseVideo'); break;
             case 'resume': cmd('playVideo'); break;
-            case 'seek':   curTime = Math.max(0, curTime + (d.seconds || 0)); cmd('seekTo', [curTime, true]); cmd('playVideo'); break;
+            case 'seek':   // نسبي بالثواني
+                curTime = Math.max(0, curTime + (d.seconds || 0));
+                cmd('seekTo', [curTime, true]); cmd('playVideo'); break;
+            case 'seekPercent': // مطلق بالنسبة المئوية 0..100
+                if(curDuration > 0){
+                    curTime = curDuration * (d.percent/100);
+                    cmd('seekTo', [curTime, true]); cmd('playVideo');
+                }
+                break;
             case 'volume': curVolume = d.volume; applyVol(); break;
             case 'mute':   curMuted = true; cmd('mute'); break;
             case 'unmute': curMuted = false; cmd('unMute'); cmd('setVolume',[curVolume]); break;
@@ -83,5 +114,5 @@
     const v = new URLSearchParams(location.search).get('v');
     if(v) build(v);
 </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0788f04cdc63941',t:'MTc4MDc2MDg3OA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a07951baaa1283dc',t:'MTc4MDc2ODg1NA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
