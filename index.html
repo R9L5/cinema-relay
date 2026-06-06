@@ -35,11 +35,10 @@
         h.innerHTML = '';
         if(!videoId){ showIdle(true); return; }
         showIdle(false);
-        // nocookie + enablejsapi : يدعم التحكم (تقديم/ترجيع/صوت)
         const params = [
             'autoplay=1','mute=0','controls=0','rel=0','modestbranding=1',
             'iv_load_policy=3','disablekb=1','fs=0','playsinline=1',
-            'enablejsapi=1','origin=' + location.origin
+            'enablejsapi=1','widgetid=1','origin=' + encodeURIComponent(location.origin)
         ].join('&');
         const f = document.createElement('iframe');
         f.id = 'yt';
@@ -49,16 +48,31 @@
         f.setAttribute('referrerpolicy','strict-origin-when-cross-origin');
         f.src = 'https://www.youtube-nocookie.com/embed/' + videoId + '?' + params;
         h.appendChild(f);
+        f.addEventListener('load', startListening);
+    }
+
+    let listenTimer = null;
+    function startListening(){
+        const f = document.getElementById('yt');
+        if(!f || !f.contentWindow) return;
+        let n = 0;
+        clearInterval(listenTimer);
+        listenTimer = setInterval(()=>{
+            try { f.contentWindow.postMessage(JSON.stringify({event:'listening', id:1, channel:'widget'}), '*'); } catch(e){}
+            n++;
+            if(n > 20) clearInterval(listenTimer);
+        }, 500);
     }
 
     function cmd(func, args){
         const f = document.getElementById('yt');
         if(!f || !f.contentWindow) return;
-        f.contentWindow.postMessage(JSON.stringify({event:'command', func:func, args:args||[]}), '*');
+        f.contentWindow.postMessage(JSON.stringify({
+            event:'command', func:func, args:args||[], id:1, channel:'widget'
+        }), '*');
     }
     function applyVol(){ cmd('setVolume',[curVolume]); curMuted ? cmd('mute') : cmd('unMute'); }
 
-    // ارسال حالة الوقت للنافذة الأصل (player.html) كل ثانية
     function reportTime(){
         if(window.parent){
             window.parent.postMessage(JSON.stringify({
@@ -72,14 +86,11 @@
         let d = ev.data;
         if(typeof d === 'string'){ try{ d = JSON.parse(d); }catch(e){ return; } }
         if(!d) return;
-
-        // احداث يوتيوب
         if(d.event === 'infoDelivery' && d.info){
             if(typeof d.info.currentTime === 'number') curTime = d.info.currentTime;
             if(typeof d.info.duration === 'number' && d.info.duration > 0) curDuration = d.info.duration;
         }
         if(d.event === 'onStateChange' && d.info === 0 && curVideo){ curTime = 0; cmd('seekTo', [0, true]); cmd('playVideo'); return; }
-
         if(!d.action) return;
         switch(d.action){
             case 'load':
@@ -87,19 +98,15 @@
                 curVolume = (typeof d.volume==='number') ? d.volume : curVolume;
                 curMuted = !!d.muted;
                 build(d.videoId);
-                setTimeout(()=>{
-                    applyVol(); cmd('playVideo');
-                    const f = document.getElementById('yt');
-                    if(f && f.contentWindow){ f.contentWindow.postMessage(JSON.stringify({event:'listening'}), '*'); }
-                }, 1500);
+                setTimeout(()=>{ applyVol(); cmd('playVideo'); }, 1500);
                 break;
             case 'stop':   curVideo = null; curTime = 0; curDuration = 0; build(null); break;
             case 'pause':  cmd('pauseVideo'); break;
             case 'resume': cmd('playVideo'); break;
-            case 'seek':   // نسبي بالثواني
+            case 'seek':
                 curTime = Math.max(0, curTime + (d.seconds || 0));
                 cmd('seekTo', [curTime, true]); cmd('playVideo'); break;
-            case 'seekPercent': // مطلق بالنسبة المئوية 0..100
+            case 'seekPercent':
                 if(curDuration > 0){
                     curTime = curDuration * (d.percent/100);
                     cmd('seekTo', [curTime, true]); cmd('playVideo');
@@ -114,5 +121,5 @@
     const v = new URLSearchParams(location.search).get('v');
     if(v) build(v);
 </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a07951baaa1283dc',t:'MTc4MDc2ODg1NA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</body>
 </html>
