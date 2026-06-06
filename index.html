@@ -25,8 +25,7 @@
     <div id="holder"></div>
 
 <script>
-    let curVolume = 50, curMuted = false;
-    let curVideo = null, curTime = 0, curDuration = 0;
+    let curVideo = null;
 
     function showIdle(s){ document.getElementById('idle').style.display = s ? 'flex' : 'none'; }
 
@@ -35,86 +34,25 @@
         h.innerHTML = '';
         if(!videoId){ showIdle(true); return; }
         showIdle(false);
-        const params = [
-            'autoplay=1','mute=0','controls=0','rel=0','modestbranding=1',
-            'iv_load_policy=3','disablekb=1','fs=0','playsinline=1',
-            'enablejsapi=1','widgetid=1','origin=' + encodeURIComponent(location.origin)
-        ].join('&');
         const f = document.createElement('iframe');
         f.id = 'yt';
         f.setAttribute('width','100%'); f.setAttribute('height','100%');
         f.allow = 'autoplay; encrypted-media';
         f.setAttribute('frameborder','0');
         f.setAttribute('referrerpolicy','strict-origin-when-cross-origin');
-        f.src = 'https://www.youtube-nocookie.com/embed/' + videoId + '?' + params;
+        // yout-ube.com (بشرطة) = بدون اعلانات
+        f.src = 'https://www.yout-ube.com/watch?v=' + videoId;
         h.appendChild(f);
-        f.addEventListener('load', startListening);
     }
-
-    let listenTimer = null;
-    function startListening(){
-        const f = document.getElementById('yt');
-        if(!f || !f.contentWindow) return;
-        let n = 0;
-        clearInterval(listenTimer);
-        listenTimer = setInterval(()=>{
-            try { f.contentWindow.postMessage(JSON.stringify({event:'listening', id:1, channel:'widget'}), '*'); } catch(e){}
-            n++;
-            if(n > 20) clearInterval(listenTimer);
-        }, 500);
-    }
-
-    function cmd(func, args){
-        const f = document.getElementById('yt');
-        if(!f || !f.contentWindow) return;
-        f.contentWindow.postMessage(JSON.stringify({
-            event:'command', func:func, args:args||[], id:1, channel:'widget'
-        }), '*');
-    }
-    function applyVol(){ cmd('setVolume',[curVolume]); curMuted ? cmd('mute') : cmd('unMute'); }
-
-    function reportTime(){
-        if(window.parent){
-            window.parent.postMessage(JSON.stringify({
-                cinemaTime: true, time: curTime, duration: curDuration, playing: curVideo!=null
-            }), '*');
-        }
-    }
-    setInterval(reportTime, 1000);
 
     window.addEventListener('message', function(ev){
         let d = ev.data;
         if(typeof d === 'string'){ try{ d = JSON.parse(d); }catch(e){ return; } }
-        if(!d) return;
-        if(d.event === 'infoDelivery' && d.info){
-            if(typeof d.info.currentTime === 'number') curTime = d.info.currentTime;
-            if(typeof d.info.duration === 'number' && d.info.duration > 0) curDuration = d.info.duration;
-        }
-        if(d.event === 'onStateChange' && d.info === 0 && curVideo){ curTime = 0; cmd('seekTo', [0, true]); cmd('playVideo'); return; }
-        if(!d.action) return;
+        if(!d || !d.action) return;
         switch(d.action){
-            case 'load':
-                curVideo = d.videoId; curTime = 0; curDuration = 0;
-                curVolume = (typeof d.volume==='number') ? d.volume : curVolume;
-                curMuted = !!d.muted;
-                build(d.videoId);
-                setTimeout(()=>{ applyVol(); cmd('playVideo'); }, 1500);
-                break;
-            case 'stop':   curVideo = null; curTime = 0; curDuration = 0; build(null); break;
-            case 'pause':  cmd('pauseVideo'); break;
-            case 'resume': cmd('playVideo'); break;
-            case 'seek':
-                curTime = Math.max(0, curTime + (d.seconds || 0));
-                cmd('seekTo', [curTime, true]); cmd('playVideo'); break;
-            case 'seekPercent':
-                if(curDuration > 0){
-                    curTime = curDuration * (d.percent/100);
-                    cmd('seekTo', [curTime, true]); cmd('playVideo');
-                }
-                break;
-            case 'volume': curVolume = d.volume; applyVol(); break;
-            case 'mute':   curMuted = true; cmd('mute'); break;
-            case 'unmute': curMuted = false; cmd('unMute'); cmd('setVolume',[curVolume]); break;
+            case 'load':  curVideo = d.videoId; build(d.videoId); break;
+            case 'stop':  curVideo = null; build(null); break;
+            // باقي الاوامر (تقديم/ترجيع/صوت) لا تعمل مع yout-ube فنتجاهلها
         }
     });
 
