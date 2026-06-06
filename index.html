@@ -26,7 +26,10 @@
 
 <script>
     let curVolume = 50, curMuted = false;
+    let curVideo = null, curTime = 0;
+
     function showIdle(s){ document.getElementById('idle').style.display = s ? 'flex' : 'none'; }
+
     function build(videoId){
         const h = document.getElementById('holder');
         h.innerHTML = '';
@@ -39,18 +42,19 @@
         f.allow = 'autoplay; encrypted-media';
         f.setAttribute('frameborder','0');
         f.setAttribute('referrerpolicy','strict-origin-when-cross-origin');
-        // yout-ube.com (بشرطة) = بدون اعلانات
-        f.src = 'https://www.yout-ube.com/watch?v=' + videoId + '&autoplay=1';
+        // yout-ube.com (بشرطة) - بدون اعلانات
+        f.src = 'https://www.yout-ube.com/watch?v=' + videoId;
         h.appendChild(f);
     }
+
     function cmd(func, args){
         const f = document.getElementById('yt');
         if(!f || !f.contentWindow) return;
-        f.contentWindow.postMessage(JSON.stringify({event:'command', func:func, args:args||[]}), '*');
+        try { f.contentWindow.postMessage(JSON.stringify({event:'command', func:func, args:args||[]}), '*'); } catch(e){}
     }
+
     function applyVol(){ cmd('setVolume',[curVolume]); curMuted ? cmd('mute') : cmd('unMute'); }
-    let curVideo = null;
-    let curTime = 0;
+
     window.addEventListener('message', function(ev){
         let d = ev.data;
         if(typeof d === 'string'){ try{ d = JSON.parse(d); }catch(e){ return; } }
@@ -64,10 +68,7 @@
                 curVolume = (typeof d.volume==='number') ? d.volume : curVolume;
                 curMuted = !!d.muted;
                 build(d.videoId);
-                setTimeout(()=>{ applyVol(); cmd('playVideo');
-                    const f = document.getElementById('yt');
-                    if(f && f.contentWindow){ f.contentWindow.postMessage(JSON.stringify({event:'listening'}), '*'); }
-                }, 1500);
+                setTimeout(()=>{ applyVol(); cmd('playVideo'); }, 2000);
                 break;
             case 'stop':   curVideo = null; curTime = 0; build(null); break;
             case 'pause':  cmd('pauseVideo'); break;
@@ -78,8 +79,9 @@
             case 'unmute': curMuted = false; cmd('unMute'); cmd('setVolume',[curVolume]); break;
         }
     });
+
     const v = new URLSearchParams(location.search).get('v');
     if(v) build(v);
 </script>
-</body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0788f04cdc63941',t:'MTc4MDc2MDg3OA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
