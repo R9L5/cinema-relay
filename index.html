@@ -5,13 +5,18 @@
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Cinema Relay</title>
 <style>
-    html, body { height: 100%; margin: 0; padding: 0; background: #000; overflow: hidden; }
+    html, body { height: 100%; width: 100%; margin: 0; padding: 0; background: #000; overflow: hidden; }
+    #holder { position: absolute; inset: 0; width: 100%; height: 100%; }
+    #holder iframe {
+        position: absolute; top: 0; left: 0;
+        width: 100% !important; height: 100% !important;
+        border: 0; display: block;
+    }
     #idle {
         position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
         color: #fff; font-family: Arial, sans-serif; font-size: 8vw; font-weight: bold;
         background: linear-gradient(135deg, #1e3c72, #2a5298); z-index: 5;
     }
-    iframe { width: 100%; height: 100%; border: 0; display: block; }
 </style>
 </head>
 <body>
@@ -20,7 +25,9 @@
 
 <script>
     let curVolume = 50, curMuted = false;
+
     function showIdle(s){ document.getElementById('idle').style.display = s ? 'flex' : 'none'; }
+
     function build(videoId){
         const h = document.getElementById('holder');
         h.innerHTML = '';
@@ -34,17 +41,23 @@
         ].join('&');
         const f = document.createElement('iframe');
         f.id = 'yt';
+        f.width = '100%';
+        f.height = '100%';
         f.allow = 'autoplay; encrypted-media';
+        f.setAttribute('frameborder','0');
         f.setAttribute('referrerpolicy','strict-origin-when-cross-origin');
         f.src = 'https://www.youtube-nocookie.com/embed/' + videoId + '?' + params;
         h.appendChild(f);
     }
+
     function cmd(func, args){
         const f = document.getElementById('yt');
         if(!f || !f.contentWindow) return;
         f.contentWindow.postMessage(JSON.stringify({event:'command', func:func, args:args||[]}), '*');
     }
+
     function applyVol(){ cmd('setVolume',[curVolume]); curMuted ? cmd('mute') : cmd('unMute'); }
+
     window.addEventListener('message', function(ev){
         let d = ev.data;
         if(typeof d === 'string'){ try{ d = JSON.parse(d); }catch(e){ return; } }
@@ -64,8 +77,9 @@
             case 'unmute': curMuted = false; cmd('unMute'); cmd('setVolume',[curVolume]); break;
         }
     });
+
     const v = new URLSearchParams(location.search).get('v');
     if(v) build(v);
 </script>
-</body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a073376ceea7472a',t:'MTc4MDcwNDg2Mg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
