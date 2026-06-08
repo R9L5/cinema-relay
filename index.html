@@ -125,6 +125,7 @@
     }
 
     function onPlayerStateChange(event) {
+        if (event && event.data === YT.PlayerState.ENDED) { try { parent.postMessage(JSON.stringify({ action:'ended' }), '*'); } catch(e) {} } // CLEAN_AUTONEXT_RELAY_ENDED_V12
         if (event.data === YT.PlayerState.ENDED) { try { parent.postMessage(JSON.stringify({ action:'ended' }), '*'); } catch(e) {} } // REAL_QUEUE_AUTONEXT_RELAY_V11
         if (event.data === YT.PlayerState.PLAYING) {
             showIdle(false);
