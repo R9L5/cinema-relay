@@ -125,12 +125,13 @@
     }
 
     function onPlayerStateChange(event) {
+        if (event.data === YT.PlayerState.ENDED) { try { parent.postMessage(JSON.stringify({ action:'ended' }), '*'); } catch(e) {} } // REAL_QUEUE_AUTONEXT_RELAY_V11
         if (event.data === YT.PlayerState.PLAYING) {
             showIdle(false);
             showErr('');
             applyAudio();
         } else if (event.data === YT.PlayerState.ENDED) {
-            // نخلي الشاشة واقفة، والسيستم الخارجي يقرر التالي
+            try { parent.postMessage(JSON.stringify({ action: 'ended' }), '*'); } catch(e) {}
         }
     }
 
@@ -252,3 +253,5 @@
 </script>
 </body>
 </html>
+
+<!-- NO_ADS_NOTE_RED_V5: YouTube embeds cannot guarantee zero ads; controls hidden and nocookie host used. -->
