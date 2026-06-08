@@ -5,59 +5,193 @@
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Cinema Relay</title>
 <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { height: 100%; width: 100%; background: #000; overflow: hidden; }
-    #holder { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; }
-    #holder iframe {
-        position: fixed; top: 0; left: 0;
-        width: 100vw !important; height: 100vh !important;
-        border: 0 !important; display: block;
-    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body { width:100%; height:100%; background:#000; overflow:hidden; }
+    #player, iframe { position:fixed; inset:0; width:100% !important; height:100% !important; border:0 !important; background:#000; }
     #idle {
-        position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-        color: #fff; font-family: Arial, sans-serif; font-size: 8vw; font-weight: bold;
-        background: linear-gradient(135deg, #1e3c72, #2a5298); z-index: 5;
+        position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+        color:#fff; font-family:Arial,sans-serif; font-size:8vw; font-weight:bold;
+        background:linear-gradient(135deg,#10131d,#05070c); z-index:5;
+    }
+    #err {
+        position:fixed; left:18px; right:18px; bottom:18px; color:#fff; z-index:10;
+        font:18px Arial,sans-serif; text-align:center; padding:12px; display:none;
+        background:rgba(0,0,0,.72); border:1px solid rgba(255,255,255,.18); border-radius:14px;
     }
 </style>
 </head>
 <body>
     <div id="idle">🎬 CINEMA</div>
-    <div id="holder"></div>
+    <div id="player"></div>
+    <div id="err"></div>
 
 <script>
-    let curVideo = null;
+    let apiReady = false;
+    let player = null;
+    let pending = null;
+    let lastVolume = 50;
+    let lastMuted = false;
 
-    function showIdle(s){ document.getElementById('idle').style.display = s ? 'flex' : 'none'; }
+    function showIdle(show){ document.getElementById('idle').style.display = show ? 'flex' : 'none'; }
+    function showErr(msg){
+        const e = document.getElementById('err');
+        e.textContent = msg || '';
+        e.style.display = msg ? 'block' : 'none';
+    }
 
-    function build(videoId){
-        const h = document.getElementById('holder');
-        h.innerHTML = '';
-        if(!videoId){ showIdle(true); return; }
+    function safe(fn){ try { if (player && typeof fn === 'function') fn(); } catch(e){} }
+
+    function applyAudio(){
+        safe(function(){
+            let v = Math.max(0, Math.min(100, Number(lastVolume) || 0));
+            player.setVolume(v);
+            if (lastMuted || v <= 0) player.mute();
+            else player.unMute();
+        });
+    }
+
+    function onYouTubeIframeAPIReady(){
+        apiReady = true;
+        if (pending) {
+            const d = pending;
+            pending = null;
+            loadVideo(d);
+        }
+    }
+
+    function createPlayer(videoId, startSeconds){
+        player = new YT.Player('player', {
+            width: '100%',
+            height: '100%',
+            videoId: videoId,
+            playerVars: {
+                autoplay: 1,
+                controls: 0,
+                disablekb: 1,
+                fs: 0,
+                rel: 0,
+                modestbranding: 1,
+                playsinline: 1,
+                enablejsapi: 1,
+                origin: window.location.origin
+            },
+            events: {
+                onReady: function(){
+                    showErr('');
+                    showIdle(false);
+                    applyAudio();
+                    safe(function(){
+                        if (startSeconds && startSeconds > 0) player.seekTo(Number(startSeconds), true);
+                        player.playVideo();
+                    });
+                },
+                onError: function(ev){
+                    showErr('YouTube Error: ' + (ev && ev.data ? ev.data : 'unknown') + ' - جرّب فيديو ثاني أو تأكد من رابط GitHub Pages.');
+                }
+            }
+        });
+    }
+
+    function loadVideo(d){
+        if (!d || !d.videoId) return;
+        lastVolume = (d.volume !== undefined) ? Number(d.volume) : lastVolume;
+        lastMuted = !!d.muted;
         showIdle(false);
-        const f = document.createElement('iframe');
-        f.id = 'yt';
-        f.setAttribute('width','100%'); f.setAttribute('height','100%');
-        f.allow = 'autoplay; encrypted-media';
-        f.setAttribute('frameborder','0');
-        f.setAttribute('referrerpolicy','strict-origin-when-cross-origin');
-        // yout-ube.com (بشرطة) = بدون اعلانات
-        f.src = 'https://www.yout-ube.com/watch?v=' + videoId;
-        h.appendChild(f);
+
+        if (!apiReady || typeof YT === 'undefined' || !YT.Player) {
+            pending = d;
+            return;
+        }
+
+        const start = Number(d.start || 0) || 0;
+        if (!player) {
+            createPlayer(d.videoId, start);
+        } else {
+            safe(function(){
+                player.loadVideoById({ videoId: d.videoId, startSeconds: start });
+                player.playVideo();
+            });
+            setTimeout(applyAudio, 120);
+        }
+    }
+
+    function stopVideo(){
+        safe(function(){
+            try { player.stopVideo(); } catch(e){}
+            try { player.clearVideo(); } catch(e){}
+        });
+        showIdle(true);
+    }
+
+    function seekRelative(seconds){
+        safe(function(){
+            const cur = Number(player.getCurrentTime && player.getCurrentTime()) || 0;
+            const dur = Number(player.getDuration && player.getDuration()) || 0;
+            let target = cur + Number(seconds || 0);
+            if (target < 0) target = 0;
+            if (dur > 0 && target > dur) target = dur - 0.2;
+            player.seekTo(target, true);
+        });
+    }
+
+    function seekPercent(percent){
+        safe(function(){
+            const dur = Number(player.getDuration && player.getDuration()) || 0;
+            if (dur <= 0) return;
+            let p = Math.max(0, Math.min(100, Number(percent) || 0));
+            player.seekTo(dur * (p / 100), true);
+        });
+    }
+
+    function seekTo(seconds){
+        safe(function(){
+            const dur = Number(player.getDuration && player.getDuration()) || 0;
+            let target = Math.max(0, Number(seconds) || 0);
+            if (dur > 0 && target > dur) target = dur - 0.2;
+            player.seekTo(target, true);
+        });
     }
 
     window.addEventListener('message', function(ev){
         let d = ev.data;
-        if(typeof d === 'string'){ try{ d = JSON.parse(d); }catch(e){ return; } }
-        if(!d || !d.action) return;
+        if (typeof d === 'string') { try { d = JSON.parse(d); } catch(e) { return; } }
+        if (!d || !d.action) return;
+
         switch(d.action){
-            case 'load':  curVideo = d.videoId; build(d.videoId); break;
-            case 'stop':  curVideo = null; build(null); break;
-            // باقي الاوامر (تقديم/ترجيع/صوت) لا تعمل مع yout-ube فنتجاهلها
+            case 'load': loadVideo(d); break;
+            case 'stop': stopVideo(); break;
+            case 'pause': safe(function(){ player.pauseVideo(); }); break;
+            case 'resume': safe(function(){ player.playVideo(); }); break;
+            case 'volume':
+                lastVolume = Number(d.volume) || 0;
+                applyAudio();
+                break;
+            case 'mute':
+                lastMuted = true;
+                applyAudio();
+                break;
+            case 'unmute':
+                lastMuted = false;
+                applyAudio();
+                break;
+            case 'seek':
+                seekRelative(d.seconds);
+                break;
+            case 'seekPercent':
+                seekPercent(d.percent);
+                break;
+            case 'seekTo':
+                seekTo(d.seconds);
+                break;
         }
     });
 
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(tag);
+
     const v = new URLSearchParams(location.search).get('v');
-    if(v) build(v);
+    if (v) loadVideo({ action:'load', videoId:v, volume:50, muted:false });
 </script>
 </body>
 </html>
