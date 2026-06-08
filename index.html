@@ -61,6 +61,7 @@
 
     function createPlayer(videoId, startSeconds){
         player = new YT.Player('player', {
+            host: 'https://www.youtube-nocookie.com',
             width: '100%',
             height: '100%',
             videoId: videoId,
@@ -73,7 +74,8 @@
                 modestbranding: 1,
                 playsinline: 1,
                 enablejsapi: 1,
-                origin: window.location.origin
+                origin: window.location.origin,
+                widget_referrer: window.location.href
             },
             events: {
                 onReady: function(){
